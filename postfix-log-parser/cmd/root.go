@@ -77,7 +77,7 @@ var (
 	File   os.File
 	Writer *bufio.Writer
 
-	Version = "1.4.5"
+	Version = "1.4.6a"
 
 	BuildInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "postfixlogparser_build_info",
@@ -293,6 +293,52 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 		return err
 	}
 
+	/*************************************************
+	 *
+	 * First process one line messages, as we dont
+	 *  need to store them
+	 *
+	 ************************************************/
+	/*
+	 * 2025-02-13T12:44:28.836533+01:00 srv-smtp postfix/smtpd[65735] warning: Message delivery request rate limit exceeded: 19 from unknown[41.42.43.44] for service smtp
+	 */
+	// A postfix-ratelimit message is not queued, we just write and forget
+	if strings.EqualFold(logFormat.Status, "postfix-ratelimit") {
+		MsgRejectedCnt.WithLabelValues(logFormat.Hostname).Inc()
+		message := Message{
+			Time:    logFormat.Time,
+			Status:  logFormat.Status,
+			Message: logFormat.Messages,
+		}
+
+		tmpplp := PostfixLogParser{
+			Time:           logFormat.Time,
+			Hostname:       logFormat.Hostname,
+			Process:        logFormat.Process,
+			ClientHostname: logFormat.ClientHostname,
+			ClinetIp:       logFormat.ClinetIp,
+		}
+		tmpplp.Messages = append(tmpplp.Messages, message)
+
+		var jsonBytes []byte
+		if gFlatten {
+			jsonBytes, err = json.Marshal(PlpToFlat(&tmpplp)[0])
+		} else {
+			jsonBytes, err = json.Marshal(tmpplp)
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		outfMtx.Lock()
+		err = writeOut(string(jsonBytes), gOutputFile)
+		outfMtx.Unlock()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return nil
+	}
+
 	/*
 		Oct 10 04:02:02 mail.example.com postfix/smtpd[22941]: DFBEFDBF00C5: client=example.net[127.0.0.1], sasl_method=PLAIN, sasl_username=user@example.com
 	*/
@@ -423,6 +469,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 		}
 		mqMtx.Unlock()
 	}
+
 	/*
 		Oct 10 04:02:08 mail.example.com postfix/qmgr[18719]: DFBEFDBF00C5: removed
 			or
@@ -477,8 +524,8 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 	}
 
 	/*
-		2022-06-29T10:55:18.498553+02:00 srv-smtp-01.domain.com postfix/smtpd[75994] warning: unknown[10.11.12.13]: SASL LOGIN authentication failed: authentication failure
-	*/
+	 * 2022-06-29T10:55:18.498553+02:00 srv-smtp-01.domain.com postfix/smtpd[75994] warning: unknown[10.11.12.13]: SASL LOGIN authentication failed: authentication failure
+	 */
 	// An auth failed message is not queued, we just write and forget
 	if strings.EqualFold(logFormat.Status, "auth-failed") {
 		MsgAuthFailed.WithLabelValues(logFormat.Hostname).Inc()

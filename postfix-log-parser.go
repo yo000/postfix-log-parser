@@ -14,6 +14,7 @@ const (
 	HostRegexpFormat           = `([0-9A-Za-z\-\.]*)`
 	ProcessRegexpFormat        = `(postfix.*(?:\/[a-z]*)+\[[0-9]{1,7}\])?`
 	QueueIdRegexpFormat        = `([0-9A-Z]*)`
+	// These are the main messages
 	ClientRegexpFormat         = `(?:client=(.+)\[(.+)\](?:, sasl_method=(.+), sasl_username=(.+))?)?`
 	MessageIdRegexpFormat      = `(?:message-id=<(.+)>)?`
 	FromRegexpFormat           = `(?:from=<(.+@.+)>(?:, size=(\d+), nrcpt=(\d+))?)?`
@@ -22,7 +23,8 @@ const (
 	MilterRegexpFormat         = `(?:(milter-.*): .* from (.+)\[(.+)\]: .*from=<(.+@.+)?> to=<(.+@.+)> .*)?`
 	AuthentFailedRegexpFormat  = `(?:warning: (.+)\[(.+)\]: SASL (.*) authentication failed: (.*))?`
 	PostfixRejectRegexpFormat  = `(?:reject: RCPT from (.+)\[(.+)\]: [0-9]{3} [0-9\.]{5} [^;]*; from=<(.+@.+)?> to=<(.+@[^>]+)>.*$)?`
-	MessageDetailsRegexpFormat = `(` + ClientRegexpFormat + MessageIdRegexpFormat + FromRegexpFormat + ToRegexpFormat + SenderNDNRegexpFormat + MilterRegexpFormat + AuthentFailedRegexpFormat + PostfixRejectRegexpFormat + `.*)`
+	PostfixRLimitExceedFormat  = `(?:warning: Message delivery request rate limit exceeded: ([0-9]+) from (.+)\[(.+)\] for service [a-zA-Z]+)?`
+	MessageDetailsRegexpFormat = `(` + ClientRegexpFormat + MessageIdRegexpFormat + FromRegexpFormat + ToRegexpFormat + SenderNDNRegexpFormat + MilterRegexpFormat + AuthentFailedRegexpFormat + PostfixRejectRegexpFormat + PostfixRLimitExceedFormat + `.*)`
 	RegexpFormat               = SyslogPri + TimeRegexpFormat + ` ` + HostRegexpFormat + ` ` + ProcessRegexpFormat + `:? ` + QueueIdRegexpFormat + `(?:\: )?` + MessageDetailsRegexpFormat
 )
 
@@ -108,6 +110,12 @@ func (p *PostfixLog) Parse(text []byte) (LogFormat, error) {
 		logFormat.From = string(group[28])
 		logFormat.To = string(group[29])
 		logFormat.Status = "postfix-reject"
+	// postfix rate-limit
+	} else if len(group[30]) > 0 {
+		logFormat.ClientHostname = string(group[31])
+		logFormat.ClinetIp = string(group[32])
+		logFormat.Status = "postfix-ratelimit"
+	// bounced by remote
 	} else {
 		logFormat.Status = string(group[15])
 		logFormat.ClientHostname = string(group[6])
