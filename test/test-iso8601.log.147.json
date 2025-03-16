@@ -256,3 +256,26 @@
     }
   ]
 }
+{
+  "time": "2025-03-09T16:41:59.568868+01:00",
+  "hostname": "smtp.example.org",
+  "process": "postfix/smtpd[78309]",
+  "queue_id": "NOQUEUE",
+  "client_hostname": "unknown",
+  "client_ip": "192.168.0.11",
+  "sasl_method": "",
+  "sasl_username": "",
+  "message_id": "",
+  "from": "not_an_email",
+  "size": "",
+  "nrcpt": "1",
+  "messages": [
+    {
+      "time": "2025-03-09T16:41:59.568868+01:00",
+      "to": "recipient@another.domain.com",
+      "status": "postfix-reject",
+      "message": "reject: RCPT from unknown[192.168.0.11]: 504 5.5.2 <not_an_email>: Sender address rejected: need fully-qualified address; from=<not_an_email> to=<recipient@another.domain.com> proto=ESMTP helo=<srv01>",
+      "bounce_id": ""
+    }
+  ]
+}

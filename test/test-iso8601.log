@@ -57,3 +57,7 @@
 2025-03-15T13:30:31.158169+01:00 smtp.example.org postfix/cleanup[58145] 53AEC4F144: message-id=<94851c4c5f9b5ef98755296606bf32ab@example.org>
 2025-03-15T13:30:31.206043+01:00 smtp.example.org postfix/cleanup[58145] 53AEC4F144: milter-reject: END-OF-MESSAGE from unknown[192.168.0.22]: 4.7.1 Ratelimit "to_ip_from" exceeded; from=<sender@example.org> to=<recipient4@anotherdomain.com> proto=ESMTP helo=<smtp.internal.local>
 2025-03-15T13:30:31.238801+01:00 smtp.example.org postfix/smtpd[17507] disconnect from unknown[192.168.0.22] ehlo=2 starttls=1 auth=1 mail=1 rcpt=4/4 bdat=0/1 rset=1 quit=1 commands=8/10
+2025-03-09T16:41:59.516331+01:00 smtp.example.org postfix/smtpd[78309] connect from unknown[192.168.0.11]
+2025-03-09T16:41:59.568868+01:00 smtp.example.org postfix/smtpd[78309] NOQUEUE: reject: RCPT from unknown[192.168.0.11]: 504 5.5.2 <not_an_email>: Sender address rejected: need fully-qualified address; from=<not_an_email> to=<recipient@another.domain.com> proto=ESMTP helo=<srv01>
+2025-03-09T16:41:59.568892+01:00 smtp.example.org postfix/smtpd[78309] using backwards-compatible default setting smtpd_relay_before_recipient_restrictions=no to reject recipient "recipient@another.domain.com" from client "unknown[192.168.0.11]"
+2025-03-09T16:41:59.587032+01:00 smtp.example.org postfix/smtpd[78309] disconnect from unknown[192.168.0.11] ehlo=1 mail=1 rcpt=0/1 quit=1 commands=3/4
