@@ -41,8 +41,11 @@ type (
 		From           string     `json:"from"`
 		Size           string     `json:"size"`
 		NRcpt          string     `json:"nrcpt"`
-		Messages       []Message  `json:"messages"`
+		Nrcpti         int        `json:"-"`
+		Messages       Messages   `json:"messages"`
 	}
+
+	Messages []Message
 
 	Message struct {
 		Time     *time.Time `json:"time"`
@@ -77,7 +80,7 @@ var (
 	File   os.File
 	Writer *bufio.Writer
 
-	Version = "1.4.6"
+	Version = "1.4.7"
 
 	BuildInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "postfixlogparser_build_info",
@@ -141,6 +144,7 @@ var (
 		},
 	}
 
+	gShowRegex           bool
 	gFlatten             bool
 	gOutputFile          string
 	gPidFilePath         string
@@ -148,6 +152,42 @@ var (
 	gPromListenAddress   string
 	gPromMetricPath      string
 )
+
+
+func (p *PostfixLogParser) Copy() PostfixLogParser {
+	var nm []Message
+
+	for _, m := range p.Messages {
+		nm = append(nm, m)
+	}
+
+	return PostfixLogParser{
+			Time:           p.Time,
+			Hostname:       p.Hostname,
+			Process:        p.Process,
+			QueueId:        p.QueueId,
+			ClientHostname: p.ClientHostname,
+			ClinetIp:       p.ClinetIp,
+			SaslMethod:     p.SaslMethod,
+			SaslUsername:   p.SaslUsername,
+			MessageId:      p.MessageId,
+			From:           p.From,
+			Size:           p.Size,
+			NRcpt:          p.NRcpt,
+			Nrcpti:         p.Nrcpti,
+			Messages:       nm,
+	}
+}
+
+func (m *Messages) GetByRecipient(recipient string) (*Message, int, error) {
+	for i, msg := range *m {
+		if strings.EqualFold(msg.To, recipient) {
+			return &msg, i, nil
+		}
+	}
+	return &Message{}, -1, fmt.Errorf("Not found")
+}
+
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
@@ -173,7 +213,9 @@ func PlpToFlat(plp *PostfixLogParser) []PostfixLogParserFlat {
 			MessageId:      plp.MessageId,
 			From:           plp.From,
 			Size:           plp.Size,
-			NRcpt:          plp.NRcpt,
+			// PlpToFlat make 1 json object per message, so we need to override NRcpt
+			//NRcpt:          plp.NRcpt,
+			NRcpt:          "1",
 			TimeSent:       plp.Messages[i].Time,
 			To:             plp.Messages[i].To,
 			Status:         plp.Messages[i].Status,
@@ -205,6 +247,7 @@ func NewWriter(file string) (*bufio.Writer, *os.File, error) {
 	}
 }
 
+// TODO: Remove filename arg
 func writeOut(msg string, filename string) error {
 	_, err := fmt.Fprintln(Writer, msg)
 	Writer.Flush()
@@ -263,9 +306,9 @@ func periodicallyCleanMQueue(mqueue map[string]*PostfixLogParser, mqMtx *sync.Mu
 func initConfig() {}
 
 func init() {
-
 	rootCmd.Version = Version
 
+	rootCmd.Flags().BoolVarP(&gShowRegex, "regex", "r", false, "Show parsing regex then exit")
 	rootCmd.Flags().BoolVarP(&gFlatten, "gFlatten", "f", false, "Flatten output for using with syslog")
 	rootCmd.Flags().StringVarP(&gOutputFile, "out", "o", "", "Output to file, append if exists")
 	rootCmd.Flags().StringVarP(&gPidFilePath, "pidfile", "p", "", "pid file path")
@@ -281,8 +324,8 @@ func init() {
  * Each input is stored in a map,
  * then written to output when we recognize it as the last line
  */
-func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sync.Mutex,
-	outfMtx *sync.Mutex, p *postfixlog.PostfixLog) error {
+func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sync.Mutex, outfMtx *sync.Mutex, p *postfixlog.PostfixLog) error {
+
 	logFormat, err := p.Parse(input)
 	if err != nil {
 		// Incorrect line, just skip it
@@ -308,7 +351,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 		message := Message{
 			Time:    logFormat.Time,
 			Status:  logFormat.Status,
-			Message: logFormat.Messages,
+			Message: logFormat.Message,
 		}
 
 		tmpplp := PostfixLogParser{
@@ -348,7 +391,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 		message := Message{
 			Time:    logFormat.Time,
 			Status:  logFormat.Status,
-			Message: logFormat.Messages,
+			Message: logFormat.Message,
 		}
 
 		tmpplp := PostfixLogParser{
@@ -380,10 +423,59 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 		return nil
 	}
 
+	// postfix-filter : We don't store message, only increment nrcpt and add recipient.
+	// postfix-filter is a transitional state : mail will either be sent, or milter-rejected
+	// check if queue_id already exist. Check if queue_id already exist. If so, +1 to Nrcpt and add recipient to list
+	if strings.EqualFold(logFormat.Status, "postfix-filter") {
+		mqMtx.Lock()
+		message := Message{
+			Time:     logFormat.Time,
+			To:       logFormat.To,
+			Status:   logFormat.Status,
+			Message:  logFormat.Message,
+			BounceId: "",
+		}
+		if plp, ok := mq[logFormat.QueueId]; ok {
+			nplp := plp.Copy()
+			if len(nplp.From) == 0 {
+				nplp.From = logFormat.From
+			}
+			if len(nplp.ClientHostname) == 0 {
+				nplp.ClientHostname = logFormat.ClientHostname
+			}
+			if len(nplp.ClinetIp) == 0 {
+				nplp.ClinetIp = logFormat.ClinetIp
+			}
+			nplp.Messages = append(nplp.Messages, message)
+			nplp.Nrcpti++
+			nplp.NRcpt = strconv.Itoa(nplp.Nrcpti)
+			mq[logFormat.QueueId] = &nplp
+		} else {
+			nplp := &PostfixLogParser{
+				Time:           logFormat.Time,
+				Hostname:       logFormat.Hostname,
+				Process:        logFormat.Process,
+				QueueId:        logFormat.QueueId,
+				ClientHostname: logFormat.ClientHostname,
+				ClinetIp:       logFormat.ClinetIp,
+				SaslMethod:     logFormat.SaslMethod,
+				SaslUsername:   logFormat.SaslUsername,
+				From:           logFormat.From,
+				Nrcpti:         1,
+				NRcpt:          "1",
+			}
+			nplp.Messages = append(nplp.Messages, message)
+			mq[logFormat.QueueId] = nplp
+		}
+		mqMtx.Unlock()
+
+		return nil
+	}
+
 	/*
 		Oct 10 04:02:02 mail.example.com postfix/smtpd[22941]: DFBEFDBF00C5: client=example.net[127.0.0.1], sasl_method=PLAIN, sasl_username=user@example.com
 	*/
-	if logFormat.ClientHostname != "" && !strings.HasPrefix(logFormat.Messages, "milter-reject:") {
+	if logFormat.ClientHostname != "" && !strings.HasPrefix(logFormat.Message, "milter-reject:") {
 		mqMtx.Lock()
 		mq[logFormat.QueueId] = &PostfixLogParser{
 			Time:           logFormat.Time,
@@ -411,13 +503,17 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 
 	/*
 		Oct 10 04:02:03 mail.example.com postfix/qmgr[18719]: DFBEFDBF00C5: from=<root@example.com>, size=3578, nrcpt=1 (queue active)
+		or
+		2021-02-06T10:57:58+01:00 mail.server.com postfix/cleanup[59586]: D6DDA23B0F: milter-reject: END-OF-MESSAGE from unknown[99.88.77.66]: 4.7.1 Greylisting in action, try again later; from=<user2@example.com> to=<some.dest@destdomain.com> proto=ESMTP helo=<host.sender.domain>
 	*/
 	if logFormat.From != "" {
 		mqMtx.Lock()
 		if plp, ok := mq[logFormat.QueueId]; ok {
 			plp.From = logFormat.From
-			plp.Size = logFormat.Size
-			plp.NRcpt = logFormat.NRcpt
+			if logFormat.Size != "" {
+				plp.Size = logFormat.Size
+			}
+			// Do not handle NRcpt here, it will be done next block
 		}
 		mqMtx.Unlock()
 		nrcpt, _ := strconv.ParseFloat(logFormat.NRcpt, 64)
@@ -426,7 +522,10 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 
 	/*
 		Oct 10 04:02:08 mail.example.com postfix/smtp[22928]: DFBEFDBF00C5: to=<test@example-to.com>, relay=mail.example-to.com[192.168.0.10]:25, delay=5.3, delays=0.26/0/0.31/4.7, dsn=2.0.0, status=sent (250 2.0.0 Ok: queued as C598F1B0002D)
+		or
+		2025-03-15T11:10:11.206043+01:00 mail.example.com postfix/cleanup[58145] 53AEC4F144: milter-reject: END-OF-MESSAGE from unknown[1.2.3.4]: 4.7.1 Ratelimit "to_ip_from" exceeded; from=<user1@example.org> to=<user2@anotherexample.org> proto=ESMTP helo=<relay.example.org>
 	*/
+	//if logFormat.To != "" {
 	if logFormat.To != "" {
 		mqMtx.Lock()
 		if plp, ok := mq[logFormat.QueueId]; ok {
@@ -434,7 +533,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 				Time:     logFormat.Time,
 				To:       logFormat.To,
 				Status:   logFormat.Status,
-				Message:  logFormat.Messages,
+				Message:  logFormat.Message,
 				BounceId: "",
 			}
 			/* When a message is deferred, it won't be written out until it is either sent, expired, or generates a non delivery notification.
@@ -455,7 +554,8 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 					MessageId:      plp.MessageId,
 					From:           plp.From,
 					Size:           plp.Size,
-					NRcpt:          plp.NRcpt,
+					// Could it be > 1 ?
+					NRcpt:          "1",
 				}
 				tmpplp.Messages = append(tmpplp.Messages, message)
 
@@ -478,7 +578,14 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 				// cannot use nil as type PostfixLogParser in assignment
 				//tmpplp = nil
 			} else {
-				plp.Messages = append(plp.Messages, message)
+				_, i, err := plp.Messages.GetByRecipient(logFormat.To)
+				if err != nil && strings.EqualFold(err.Error(), "Not found") {
+					plp.Messages = append(plp.Messages, message)
+					plp.Nrcpti++
+					plp.NRcpt = strconv.Itoa(plp.Nrcpti)
+				} else {
+					plp.Messages[i] = message
+				}
 			}
 		}
 		mqMtx.Unlock()
@@ -511,15 +618,34 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 		mqMtx.Unlock()
 	}
 
+	// milter-reject reject message for all recipient, so we need to update status for every message
+	if logFormat.Status == "milter-reject" {
+		mqMtx.Lock()
+		if plp, ok := mq[logFormat.QueueId]; ok {
+			for i, _ := range plp.Messages {
+				plp.Messages[i].Time = logFormat.Time
+				plp.Messages[i].Status = logFormat.Status
+				// FIXME: We override message, but the originating mesage from postfix log could be wrong as it have the last recipient in "to=<>"
+				//   and we don't want to insert manipulated log line
+				// Would it be better to clear message? or leave previous one which could be unrelated to the postfix decision? eg: 
+				//   "filter: RCPT from unknown[192.168.0.22]: <recipient3@somewhere.in>: Recipient address triggers FILTER relay:[pod-02.smtpout.exploit.intra]; from=<sender@example.org> to=<recipient3@somewhere.in> proto=ESMTP helo=<smtp.internal.local>"
+				plp.Messages[i].Message = logFormat.Message
+			}
+		} else {
+			// TODO : error case : milter reject for unknown message ?!
+		}
+		mqMtx.Unlock()
+	}
+
 	/*
 		Oct 10 04:02:08 mail.example.com postfix/qmgr[18719]: DFBEFDBF00C5: removed
-			or
+		or
 		2021-02-05T14:17:51+01:00 smtp.server.com postfix/cleanup[38982]: D8C136A3A: milter-reject: END-OF-MESSAGE from unknown[1.2.3.4]: 4.7.1 Greylisting in action, try again later; from=<sender1@sender.com> to=<dest1@example.com> proto=ESMTP helo=<mail.sender.com>
-		    or
+		or
 		2023-12-22T09:11:42.627010+01:00 smtp-02.example.org postfix/smtpd[2717] 6CB5F45B78: reject: RCPT from unknown[11.12.13.14]: 450 4.1.2 <mark@distant.domain.nz>: Recipient address rejected: Domain not found; from=<a.user@a.domain.fr> to=<mark@distant.domain.nz> proto=ESMTP helo=<mail.a.domain.fr>
 	*/
 	// "removed" message is end of logs. then flush.
-	if logFormat.Messages == "removed" || strings.HasPrefix(logFormat.Status, "milter-") || strings.EqualFold(logFormat.Status, "postfix-reject") {
+	if logFormat.Message == "removed" || strings.HasPrefix(logFormat.Status, "milter-") || strings.EqualFold(logFormat.Status, "postfix-reject") {
 		mqMtx.Lock()
 		if plp, ok := mq[logFormat.QueueId]; ok {
 			for _, plpf := range PlpToFlat(plp) {
@@ -617,6 +743,11 @@ func processLogs(cmd *cobra.Command, args []string) {
 	var mqMtx sync.Mutex
 	var useStdin bool
 
+	if gShowRegex == true {
+		fmt.Printf("%s\n", postfixlog.RegexpFormat)
+		return
+	}
+
 	// create map of messages
 	mQueue := make(map[string]*PostfixLogParser)
 
@@ -686,7 +817,6 @@ func processLogs(cmd *cobra.Command, args []string) {
 	// Cleaner thread
 	go periodicallyCleanMQueue(mQueue, &mqMtx)
 
-
 	// On demand Mqueue cleaning... For debug, dont try this at home, kids!
 /*	sig2 := make(chan os.Signal)
 	signal.Notify(sig2, syscall.SIGUSR2)
@@ -696,8 +826,25 @@ func processLogs(cmd *cobra.Command, args []string) {
 			cleanMQueue(mQueue, &mqMtx, 1 * time.Hour)
 		}
 	}()
-*/	
+*/
+	// On demand queue dump
+/*	sig2 := make(chan os.Signal)
+	signal.Notify(sig2, syscall.SIGUSR2)
+	go func() {
+		for {
+			<-sig2
+			fmt.Printf("Dump current in-ram queue. Length: %d\n", len(mQueue))
 
+			fmt.Printf("%v\n", mQueue)
+
+			mqMtx.Lock()
+			for k, v := range mQueue {
+				fmt.Printf("%v: %v\n", k, v)
+			}
+			mqMtx.Unlock()
+		}
+	}()
+*/
 	// Initialize Stdin input...
 	if true == strings.EqualFold(gSyslogListenAddress, "do-not-listen") {
 		useStdin = true
