@@ -1,0 +1,44 @@
+{
+  "time": "2025-03-15T13:30:30.342887+01:00",
+  "hostname": "smtp.example.org",
+  "process": "postfix/smtpd[17507]",
+  "queue_id": "53AEC4F144",
+  "client_hostname": "unknown",
+  "client_ip": "192.168.0.22",
+  "sasl_method": "LOGIN",
+  "sasl_username": "smtpuser@smtp.example.org",
+  "message_id": "94851c4c5f9b5ef98755296606bf32ab@example.org",
+  "from": "sender@example.org",
+  "size": "",
+  "nrcpt": "4",
+  "messages": [
+    {
+      "time": "2025-03-15T13:30:31.206043+01:00",
+      "to": "recipient1@domain1.net",
+      "status": "milter-reject",
+      "message": "milter-reject: END-OF-MESSAGE from unknown[192.168.0.22]: 4.7.1 Ratelimit \"to_ip_from\" exceeded; from=<sender@example.org> to=<recipient4@anotherdomain.com> proto=ESMTP helo=<smtp.internal.local>",
+      "bounce_id": ""
+    },
+    {
+      "time": "2025-03-15T13:30:31.206043+01:00",
+      "to": "recipient2@foreign.net",
+      "status": "milter-reject",
+      "message": "milter-reject: END-OF-MESSAGE from unknown[192.168.0.22]: 4.7.1 Ratelimit \"to_ip_from\" exceeded; from=<sender@example.org> to=<recipient4@anotherdomain.com> proto=ESMTP helo=<smtp.internal.local>",
+      "bounce_id": ""
+    },
+    {
+      "time": "2025-03-15T13:30:31.206043+01:00",
+      "to": "recipient3@somewhere.in",
+      "status": "milter-reject",
+      "message": "milter-reject: END-OF-MESSAGE from unknown[192.168.0.22]: 4.7.1 Ratelimit \"to_ip_from\" exceeded; from=<sender@example.org> to=<recipient4@anotherdomain.com> proto=ESMTP helo=<smtp.internal.local>",
+      "bounce_id": ""
+    },
+    {
+      "time": "2025-03-15T13:30:31.206043+01:00",
+      "to": "recipient4@anotherdomain.com",
+      "status": "milter-reject",
+      "message": "milter-reject: END-OF-MESSAGE from unknown[192.168.0.22]: 4.7.1 Ratelimit \"to_ip_from\" exceeded; from=<sender@example.org> to=<recipient4@anotherdomain.com> proto=ESMTP helo=<smtp.internal.local>",
+      "bounce_id": ""
+    }
+  ]
+}
