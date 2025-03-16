@@ -247,8 +247,7 @@ func NewWriter(file string) (*bufio.Writer, *os.File, error) {
 	}
 }
 
-// TODO: Remove filename arg
-func writeOut(msg string, filename string) error {
+func writeOut(msg string) error {
 	_, err := fmt.Fprintln(Writer, msg)
 	Writer.Flush()
 	if err != nil {
@@ -373,7 +372,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 			log.Fatal(err)
 		}
 		outfMtx.Lock()
-		err = writeOut(string(jsonBytes), gOutputFile)
+		err = writeOut(string(jsonBytes))
 		outfMtx.Unlock()
 		if err != nil {
 			log.Fatal(err)
@@ -414,7 +413,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 			log.Fatal(err)
 		}
 		outfMtx.Lock()
-		err = writeOut(string(jsonBytes), gOutputFile)
+		err = writeOut(string(jsonBytes))
 		outfMtx.Unlock()
 		if err != nil {
 			log.Fatal(err)
@@ -569,7 +568,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 					log.Fatal(err)
 				}
 				outfMtx.Lock()
-				err = writeOut(string(jsonBytes), gOutputFile)
+				err = writeOut(string(jsonBytes))
 				outfMtx.Unlock()
 				if err != nil {
 					log.Fatal(err)
@@ -666,7 +665,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 						log.Fatal(err)
 					}
 					outfMtx.Lock()
-					err = writeOut(string(jsonBytes), gOutputFile)
+					err = writeOut(string(jsonBytes))
 					outfMtx.Unlock()
 					if err != nil {
 						log.Fatal(err)
@@ -680,7 +679,7 @@ func parseStoreAndWrite(input []byte, mq map[string]*PostfixLogParser, mqMtx *sy
 					log.Fatal(err)
 				}
 				outfMtx.Lock()
-				err = writeOut(string(jsonBytes), gOutputFile)
+				err = writeOut(string(jsonBytes))
 				outfMtx.Unlock()
 				if err != nil {
 					log.Fatal(err)
