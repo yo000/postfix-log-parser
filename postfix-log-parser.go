@@ -24,7 +24,8 @@ const (
 	AuthentFailedRegexpFormat  = `(?:warning: (.+)\[(.+)\]: SASL (.*) authentication failed: (.*))?`
 	PostfixRejectRegexpFormat  = `(?:reject: RCPT from (.+)\[(.+)\]: [0-9]{3} [0-9\.]{5} [^;]*; from=<(.+@.+)?> to=<(.+@[^>]+)>.*$)?`
 	PostfixRLimitExceedFormat  = `(?:warning: Message delivery request rate limit exceeded: ([0-9]+) from (.+)\[(.+)\] for service [a-zA-Z]+)?`
-	MessageDetailsRegexpFormat = `(` + ClientRegexpFormat + MessageIdRegexpFormat + FromRegexpFormat + ToRegexpFormat + SenderNDNRegexpFormat + MilterRegexpFormat + AuthentFailedRegexpFormat + PostfixRejectRegexpFormat + PostfixRLimitExceedFormat + `.*)`
+	FilterRcptRegexpFormat     = `(?:filter: RCPT from (.+)\[(.+)\]: <(.+@.+)?>: ([^;]+); from=<(.+@.+)?> to=<(.+@[^>]+)> proto=[^ ]+ helo=<.+>)?`
+	MessageDetailsRegexpFormat = `(` + ClientRegexpFormat + MessageIdRegexpFormat + FromRegexpFormat + ToRegexpFormat + SenderNDNRegexpFormat + MilterRegexpFormat + AuthentFailedRegexpFormat + PostfixRejectRegexpFormat + PostfixRLimitExceedFormat + FilterRcptRegexpFormat + `.*)`
 	RegexpFormat               = SyslogPri + TimeRegexpFormat + ` ` + HostRegexpFormat + ` ` + ProcessRegexpFormat + `:? ` + QueueIdRegexpFormat + `(?:\: )?` + MessageDetailsRegexpFormat
 )
 
@@ -39,7 +40,7 @@ type (
 		Hostname       string     `json:"hostname"`
 		Process        string     `json:"process"`
 		QueueId        string     `json:"queue_id"`
-		Messages       string     `json:"messages"`
+		Message       string      `json:"message"`
 		ClientHostname string     `json:"client_hostname"`
 		ClinetIp       string     `json:"client_ip"`
 		SaslMethod     string     `json:"sasl_method"`
@@ -81,7 +82,7 @@ func (p *PostfixLog) Parse(text []byte) (LogFormat, error) {
 		Hostname:     string(group[2]),
 		Process:      string(group[3]),
 		QueueId:      string(group[4]),
-		Messages:     string(group[5]),
+		Message:      string(group[5]),
 		SaslMethod:   string(group[8]),
 		SaslUsername: string(group[9]),
 		MessageId:    string(group[10]),
@@ -115,6 +116,13 @@ func (p *PostfixLog) Parse(text []byte) (LogFormat, error) {
 		logFormat.ClientHostname = string(group[31])
 		logFormat.ClinetIp = string(group[32])
 		logFormat.Status = "postfix-ratelimit"
+	// postfix filter RCPT
+	} else if len(group[33]) > 0 {
+		logFormat.ClientHostname = string(group[33])
+		logFormat.ClinetIp = string(group[34])
+		logFormat.From = string(group[37])
+		logFormat.To = string(group[38])
+		logFormat.Status = "postfix-filter"
 	// bounced by remote
 	} else {
 		logFormat.Status = string(group[15])
