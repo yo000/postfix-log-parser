@@ -10,20 +10,34 @@ const (
 	SyslogPri                  = `(?:<\d{1,3}>)?`
 	TimeFormat                 = "Jan  2 15:04:05"
 	TimeFormatISO8601          = "2006-01-02T15:04:05.999999-07:00"
+	// Capture group 1
 	TimeRegexpFormat           = `([A-Za-z]{3}\s*[0-9]{1,2} [0-9]{2}:[0-9]{2}:[0-9]{2}|^\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d(?:\.\d+)?(?:[+-][0-2]\d:[0-5]\d|Z))`
+	// Capture group 2
 	HostRegexpFormat           = `([0-9A-Za-z\-\.]*)`
+	// Capture group 3
 	ProcessRegexpFormat        = `(postfix.*(?:\/[a-z]*)+\[[0-9]{1,7}\])?`
+	// Capture group 4
 	QueueIdRegexpFormat        = `([0-9A-Z]*)`
-	// These are the main messages
+	// These are the main messages : Capture group 5 get all the following
+	// Capture groups 6, 7, 8, 9
 	ClientRegexpFormat         = `(?:client=(.+)\[(.+)\](?:, sasl_method=(.+), sasl_username=(.+))?)?`
+	// CG 10
 	MessageIdRegexpFormat      = `(?:message-id=<(.+)>)?`
+	// CG 11, 12, 13
 	FromRegexpFormat           = `(?:from=<(.+@.+)>(?:, size=(\d+), nrcpt=(\d+))?)?`
+	// CG 14, 15
 	ToRegexpFormat             = `(?:to=<(.+@.+)>.*status=([a-z]+))?`
+	// CG 16
 	SenderNDNRegexpFormat      = `(?:sender non-delivery notification: ([0-9A-Z]*))?`
+	// CG 17, 18, 19, 20, 21
 	MilterRegexpFormat         = `(?:(milter-.*): .* from (.+)\[(.+)\]: .*from=<(.+@.+)?> to=<(.+@.+)> .*)?`
+	// CG 22, 23, 24, 25
 	AuthentFailedRegexpFormat  = `(?:warning: (.+)\[(.+)\]: SASL (.*) authentication failed: (.*))?`
-	PostfixRejectRegexpFormat  = `(?:reject: RCPT from (.+)\[(.+)\]: [0-9]{3} [0-9\.]{5} [^;]*; from=<(.+@.+)?> to=<(.+@[^>]+)>.*$)?`
+	// CG 26, 27, 28, 29. from regex is voluntarily lazy, b/c some senders really do not put '@' in from
+	PostfixRejectRegexpFormat  = `(?:reject: RCPT from (.+)\[(.+)\]: [0-9]{3} [0-9\.]{5} [^;]*; from=<(.+)?> to=<(.+@[^>]+)>.*$)?`
+	// CG 30, 31, 32
 	PostfixRLimitExceedFormat  = `(?:warning: Message delivery request rate limit exceeded: ([0-9]+) from (.+)\[(.+)\] for service [a-zA-Z]+)?`
+	// CG 33, 34, 35, 36, 37, 38
 	FilterRcptRegexpFormat     = `(?:filter: RCPT from (.+)\[(.+)\]: <(.+@.+)?>: ([^;]+); from=<(.+@.+)?> to=<(.+@[^>]+)> proto=[^ ]+ helo=<.+>)?`
 	MessageDetailsRegexpFormat = `(` + ClientRegexpFormat + MessageIdRegexpFormat + FromRegexpFormat + ToRegexpFormat + SenderNDNRegexpFormat + MilterRegexpFormat + AuthentFailedRegexpFormat + PostfixRejectRegexpFormat + PostfixRLimitExceedFormat + FilterRcptRegexpFormat + `.*)`
 	RegexpFormat               = SyslogPri + TimeRegexpFormat + ` ` + HostRegexpFormat + ` ` + ProcessRegexpFormat + `:? ` + QueueIdRegexpFormat + `(?:\: )?` + MessageDetailsRegexpFormat
